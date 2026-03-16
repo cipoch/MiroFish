@@ -1,6 +1,6 @@
 """
 LLM-based Entity and Relationship Extractor
-Replaces Zep's automatic NLP processing.
+Uses the configured LLM to replace the old managed extraction pipeline.
 Uses the configured LLM to extract entities and relationships from text chunks.
 """
 
@@ -51,7 +51,7 @@ If no entities or relationships are found, return:
 class EntityExtractor:
     """
     Extracts entities and relationships from text using LLM.
-    Designed to replace Zep's automatic entity extraction pipeline.
+    Designed to replace the old managed automatic entity extraction pipeline.
     """
 
     def __init__(self, llm_client: Optional[LLMClient] = None):

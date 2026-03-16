@@ -14,13 +14,13 @@ logger = get_logger('mirofish.graph_paging')
 
 def fetch_all_nodes(client: Any, graph_id: str, **kwargs) -> list:
     """Stub - pagination is now handled by GraphDatabase.get_all_nodes()"""
-    logger.warning("fetch_all_nodes called on deprecated zep_paging module. "
+    logger.warning("fetch_all_nodes called on deprecated kuzu_paging module. "
                   "Use GraphDatabase.get_all_nodes() instead.")
     return []
 
 
 def fetch_all_edges(client: Any, graph_id: str, **kwargs) -> list:
     """Stub - pagination is now handled by GraphDatabase.get_all_edges()"""
-    logger.warning("fetch_all_edges called on deprecated zep_paging module. "
+    logger.warning("fetch_all_edges called on deprecated kuzu_paging module. "
                   "Use GraphDatabase.get_all_edges() instead.")
     return []

@@ -20,7 +20,7 @@ from openai import OpenAI
 from ..config import Config
 from .graph_db import GraphDatabase
 from ..utils.logger import get_logger
-from .zep_entity_reader import EntityNode, ZepEntityReader
+from .kuzu_entity_reader import EntityNode, KuzuEntityReader
 
 logger = get_logger('mirofish.oasis_profile')
 
@@ -274,7 +274,7 @@ class OasisProfileGenerator:
         suffix = random.randint(100, 999)
         return f"{username}_{suffix}"
 
-    def _search_zep_for_entity(self, entity: EntityNode) -> Dict[str, Any]:
+    def _search_kuzu_for_entity(self, entity: EntityNode) -> Dict[str, Any]:
         """
         Search the knowledge graph to retrieve rich information about the entity.
 
@@ -397,7 +397,7 @@ class OasisProfileGenerator:
                 context_parts.append("### Related Entity Information\n" + "\n".join(related_info))
 
         # 4. Use graph search to retrieve richer information
-        search_results = self._search_zep_for_entity(entity)
+        search_results = self._search_kuzu_for_entity(entity)
 
         if search_results.get("facts"):
             # Deduplicate: exclude already existing facts

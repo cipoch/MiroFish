@@ -21,8 +21,9 @@ class Config:
     """Flask configuration class"""
 
     # Flask config
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'mirofish-secret-key')
-    DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+    DEBUG = _get_bool_env('FLASK_DEBUG', False)
+    SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+    CORS_ORIGINS = _get_cors_origins()
 
     # JSON config - disable ASCII escaping for proper Unicode display
     JSON_AS_ASCII = False

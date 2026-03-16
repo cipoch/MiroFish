@@ -1,7 +1,7 @@
 """
 Graph Memory Update Service
 Dynamically updates the knowledge graph with agent activities from simulation.
-(Formerly Zep-backed, now uses local KuzuDB)
+Built on local KuzuDB graph storage.
 """
 
 import os
@@ -172,7 +172,7 @@ class AgentActivity:
         return f"performed {self.action_type} action"
 
 
-class ZepGraphMemoryUpdater:
+class KuzuGraphMemoryUpdater:
     """
     Graph Memory Updater
 
@@ -362,29 +362,29 @@ class ZepGraphMemoryUpdater:
         }
 
 
-class ZepGraphMemoryManager:
+class KuzuGraphMemoryManager:
     """
     Manages graph memory updaters for multiple simulations.
     Each simulation has its own updater instance.
     """
 
-    _updaters: Dict[str, ZepGraphMemoryUpdater] = {}
+    _updaters: Dict[str, KuzuGraphMemoryUpdater] = {}
     _lock = threading.Lock()
 
     @classmethod
-    def create_updater(cls, simulation_id: str, graph_id: str) -> ZepGraphMemoryUpdater:
+    def create_updater(cls, simulation_id: str, graph_id: str) -> KuzuGraphMemoryUpdater:
         """Create a graph memory updater for a simulation"""
         with cls._lock:
             if simulation_id in cls._updaters:
                 cls._updaters[simulation_id].stop()
-            updater = ZepGraphMemoryUpdater(graph_id)
+            updater = KuzuGraphMemoryUpdater(graph_id)
             updater.start()
             cls._updaters[simulation_id] = updater
             logger.info(f"Created graph memory updater: simulation_id={simulation_id}, graph_id={graph_id}")
             return updater
 
     @classmethod
-    def get_updater(cls, simulation_id: str) -> Optional[ZepGraphMemoryUpdater]:
+    def get_updater(cls, simulation_id: str) -> Optional[KuzuGraphMemoryUpdater]:
         return cls._updaters.get(simulation_id)
 
     @classmethod

@@ -1866,11 +1866,21 @@ const truncateText = (text, maxLen) => {
   return text.substring(0, maxLen) + '...'
 }
 
+const escapeHtml = (content) => {
+  if (!content) return ''
+  return content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 const renderMarkdown = (content) => {
   if (!content) return ''
   
   // Remove leading h2 title (## xxx), since section title is already shown in outer layer
-  let processedContent = content.replace(/^##\s+.+\n+/, '')
+  let processedContent = escapeHtml(content.replace(/^##\s+.+\n+/, ''))
   
   // Process code blocks
   let html = processedContent.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="code-block"><code>$2</code></pre>')

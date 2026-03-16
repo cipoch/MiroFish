@@ -10,10 +10,11 @@ from flask import request, jsonify, send_file
 
 from . import report_bp
 from ..config import Config
+from ..core.workbench_session import WorkbenchSession
 from ..services.report_agent import ReportAgent, ReportManager, ReportStatus
 from ..services.simulation_manager import SimulationManager
 from ..models.project import ProjectManager
-from ..models.task import TaskManager, TaskStatus
+from ..models.task import TaskManager
 from ..utils.logger import get_logger
 
 logger = get_logger('mirofish.api.report')
@@ -23,179 +24,49 @@ logger = get_logger('mirofish.api.report')
 
 @report_bp.route('/generate', methods=['POST'])
 def generate_report():
-    """
-    Generate simulation analysis report (async task)
-
-    This is a long-running operation; the endpoint returns task_id immediately.
-    Use GET /api/report/generate/status to check progress.
-
-    Request (JSON):
-        {
-            "simulation_id": "sim_xxxx",    // Required, simulation ID
-            "force_regenerate": false        // Optional, force regeneration
-        }
-
-    Returns:
-        {
-            "success": true,
-            "data": {
-                "simulation_id": "sim_xxxx",
-                "task_id": "task_xxxx",
-                "status": "generating",
-                "message": "Report generation task started"
-            }
-        }
-    """
+    """Generate a simulation analysis report."""
     try:
         data = request.get_json() or {}
-        
+
         simulation_id = data.get('simulation_id')
         if not simulation_id:
             return jsonify({
                 "success": False,
                 "error": "Please provide simulation_id"
             }), 400
-        
-        force_regenerate = data.get('force_regenerate', False)
-        
-        # Get simulation info
-        manager = SimulationManager()
-        state = manager.get_simulation(simulation_id)
-        
-        if not state:
-            return jsonify({
-                "success": False,
-                "error": f"Simulation not found: {simulation_id}"
-            }), 404
-        
-        # Check if report already exists
-        if not force_regenerate:
-            existing_report = ReportManager.get_report_by_simulation(simulation_id)
-            if existing_report and existing_report.status == ReportStatus.COMPLETED:
-                return jsonify({
-                    "success": True,
-                    "data": {
-                        "simulation_id": simulation_id,
-                        "report_id": existing_report.report_id,
-                        "status": "completed",
-                        "message": "Report already exists",
-                        "already_generated": True
-                    }
-                })
-        
-        # Get project info
-        project = ProjectManager.get_project(state.project_id)
-        if not project:
-            return jsonify({
-                "success": False,
-                "error": f"Project not found: {state.project_id}"
-            }), 404
-        
-        graph_id = state.graph_id or project.graph_id
-        if not graph_id:
-            return jsonify({
-                "success": False,
-                "error": "Missing graph ID, please ensure the graph has been built"
-            }), 400
-        
-        simulation_requirement = project.simulation_requirement
-        if not simulation_requirement:
-            return jsonify({
-                "success": False,
-                "error": "Missing simulation requirement description"
-            }), 400
-        
-        # Pre-generate report_id so it can be returned to the frontend immediately
-        import uuid
-        report_id = f"report_{uuid.uuid4().hex[:12]}"
-        
-        # Create async task
-        task_manager = TaskManager()
-        task_id = task_manager.create_task(
-            task_type="report_generate",
-            metadata={
-                "simulation_id": simulation_id,
-                "graph_id": graph_id,
-                "report_id": report_id
-            }
+
+        session = WorkbenchSession.open(simulation_id=simulation_id, metadata={"entrypoint": "api.report.generate"})
+        result = session.start_report_generation(
+            simulation_id=simulation_id,
+            force_regenerate=data.get('force_regenerate', False),
         )
-        
-        # Define background task
-        def run_generate():
-            try:
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.PROCESSING,
-                    progress=0,
-                    message="Initializing Report Agent..."
-                )
-                
-                # Create Report Agent
-                agent = ReportAgent(
-                    graph_id=graph_id,
-                    simulation_id=simulation_id,
-                    simulation_requirement=simulation_requirement
-                )
-                
-                # Progress callback
-                def progress_callback(stage, progress, message):
-                    task_manager.update_task(
-                        task_id,
-                        progress=progress,
-                        message=f"[{stage}] {message}"
-                    )
-                
-                # Generate report (pass in pre-generated report_id)
-                report = agent.generate_report(
-                    progress_callback=progress_callback,
-                    report_id=report_id
-                )
-                
-                # Save report
-                ReportManager.save_report(report)
-                
-                if report.status == ReportStatus.COMPLETED:
-                    task_manager.complete_task(
-                        task_id,
-                        result={
-                            "report_id": report.report_id,
-                            "simulation_id": simulation_id,
-                            "status": "completed"
-                        }
-                    )
-                else:
-                    task_manager.fail_task(task_id, report.error or "Report generation failed")
-                
-            except Exception as e:
-                logger.error(f"Report generation failed: {str(e)}")
-                task_manager.fail_task(task_id, str(e))
-        
-        # Start background thread
-        thread = threading.Thread(target=run_generate, daemon=True)
-        thread.start()
-        
+
         return jsonify({
             "success": True,
-            "data": {
-                "simulation_id": simulation_id,
-                "report_id": report_id,
-                "task_id": task_id,
-                "status": "generating",
-                "message": "Report generation task started, check progress via /api/report/generate/status",
-                "already_generated": False
-            }
+            "data": result
         })
-        
+
+    except FileNotFoundError as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 404
+
+    except ValueError as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 400
+
     except Exception as e:
         logger.error(f"Failed to start report generation task: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
-@report_bp.route('/generate/status', methods=['POST'])
+@report_bp.route('/generate/status', methods=['GET', 'POST'])
 def get_generate_status():
     """
     Query report generation task progress
@@ -218,11 +89,32 @@ def get_generate_status():
         }
     """
     try:
-        data = request.get_json() or {}
+        report_id = None
+        if request.method == 'GET':
+            task_id = request.args.get('task_id')
+            simulation_id = request.args.get('simulation_id')
+            report_id = request.args.get('report_id')
+        else:
+            data = request.get_json() or {}
+            task_id = data.get('task_id')
+            simulation_id = data.get('simulation_id')
+            report_id = data.get('report_id')
         
-        task_id = data.get('task_id')
-        simulation_id = data.get('simulation_id')
-        
+        if report_id:
+            report = ReportManager.get_report(report_id)
+            if report and report.status == ReportStatus.COMPLETED:
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "report_id": report.report_id,
+                        "simulation_id": report.simulation_id,
+                        "status": "completed",
+                        "progress": 100,
+                        "message": "Report already generated",
+                        "already_completed": True
+                    }
+                })
+
         # If simulation_id is provided, first check if a completed report already exists
         if simulation_id:
             existing_report = ReportManager.get_report_by_simulation(simulation_id)
@@ -242,7 +134,7 @@ def get_generate_status():
         if not task_id:
             return jsonify({
                 "success": False,
-                "error": "Please provide task_id or simulation_id"
+                "error": "Please provide task_id, simulation_id, or report_id"
             }), 400
         
         task_manager = TaskManager()
@@ -306,8 +198,7 @@ def get_report(report_id: str):
         logger.error(f"Failed to get report: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -345,8 +236,7 @@ def get_report_by_simulation(simulation_id: str):
         logger.error(f"Failed to get report: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -385,8 +275,7 @@ def list_reports():
         logger.error(f"Failed to list reports: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -431,8 +320,7 @@ def download_report(report_id: str):
         logger.error(f"Failed to download report: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -457,8 +345,7 @@ def delete_report(report_id: str):
         logger.error(f"Failed to delete report: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -554,8 +441,7 @@ def chat_with_report_agent():
         logger.error(f"Chat failed: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -597,8 +483,7 @@ def get_report_progress(report_id: str):
         logger.error(f"Failed to get report progress: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -648,8 +533,7 @@ def get_report_sections(report_id: str):
         logger.error(f"Failed to get section list: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -692,8 +576,7 @@ def get_single_section(report_id: str, section_index: int):
         logger.error(f"Failed to get section content: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -743,8 +626,7 @@ def check_report_status(simulation_id: str):
         logger.error(f"Failed to check report status: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -804,8 +686,7 @@ def get_agent_log(report_id: str):
         logger.error(f"Failed to get Agent log: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -838,8 +719,7 @@ def stream_agent_log(report_id: str):
         logger.error(f"Failed to get Agent log: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -886,8 +766,7 @@ def get_console_log(report_id: str):
         logger.error(f"Failed to get console log: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -920,8 +799,7 @@ def stream_console_log(report_id: str):
         logger.error(f"Failed to get console log: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -952,9 +830,9 @@ def search_graph_tool():
                 "error": "Please provide graph_id and query"
             }), 400
         
-        from ..services.zep_tools import ZepToolsService
+        from ..services.kuzu_tools import KuzuToolsService
         
-        tools = ZepToolsService()
+        tools = KuzuToolsService()
         result = tools.search_graph(
             graph_id=graph_id,
             query=query,
@@ -970,8 +848,7 @@ def search_graph_tool():
         logger.error(f"Graph search failed: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500
 
 
@@ -996,9 +873,9 @@ def get_graph_statistics_tool():
                 "error": "Please provide graph_id"
             }), 400
         
-        from ..services.zep_tools import ZepToolsService
+        from ..services.kuzu_tools import KuzuToolsService
         
-        tools = ZepToolsService()
+        tools = KuzuToolsService()
         result = tools.get_graph_statistics(graph_id)
         
         return jsonify({
@@ -1010,6 +887,5 @@ def get_graph_statistics_tool():
         logger.error(f"Failed to get graph statistics: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
+            "error": str(e)
         }), 500

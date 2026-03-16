@@ -1,7 +1,7 @@
 """
 Entity Reader and Filter Service
 Reads nodes from the graph, filters by entity types.
-(Formerly Zep-backed, now uses local KuzuDB)
+Built on local KuzuDB graph storage.
 """
 
 import time
@@ -64,7 +64,7 @@ class FilteredEntities:
         }
 
 
-class ZepEntityReader:
+class KuzuEntityReader:
     """
     Entity Reader and Filter Service
 
@@ -143,7 +143,7 @@ class ZepEntityReader:
             List of edge dicts
         """
         if not graph_id:
-            logger.warning(f"graph_id not provided for get_node_edges, searching all graphs")
+            logger.warning(f"graph_id not provided for get_node_edges, searching available Kuzu graphs")
             return []
 
         try:

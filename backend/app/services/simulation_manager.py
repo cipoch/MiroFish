@@ -14,7 +14,7 @@ from enum import Enum
 
 from ..config import Config
 from ..utils.logger import get_logger
-from .zep_entity_reader import ZepEntityReader, FilteredEntities
+from .kuzu_entity_reader import KuzuEntityReader, FilteredEntities
 from .oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
 from .simulation_config_generator import SimulationConfigGenerator, SimulationParameters
 
@@ -116,7 +116,7 @@ class SimulationManager:
     Simulation Manager
 
     Core features:
-    1. Read and filter entities from Zep graph
+    1. Read and filter entities from Kuzu graph
     2. Generate OASIS Agent Profiles
     3. Use LLM to intelligently generate simulation configuration parameters
     4. Prepare all files needed by preset scripts
@@ -202,7 +202,7 @@ class SimulationManager:
 
         Args:
             project_id: Project ID
-            graph_id: Zep graph ID
+            graph_id: Kuzu graph ID
             enable_twitter: Whether to enable Twitter simulation
             enable_reddit: Whether to enable Reddit simulation
 
@@ -240,7 +240,7 @@ class SimulationManager:
         Prepare simulation environment (fully automated)
 
         Steps:
-        1. Read and filter entities from Zep graph
+        1. Read and filter entities from Kuzu graph
         2. Generate OASIS Agent Profile for each entity (optional LLM enhancement, supports parallel)
         3. Use LLM to intelligently generate simulation configuration parameters (time, activity, posting frequency, etc.)
         4. Save configuration files and Profile files
@@ -270,9 +270,9 @@ class SimulationManager:
             
             # ========== Phase 1: Read and filter entities ==========
             if progress_callback:
-                progress_callback("reading", 0, "Connecting to Zep graph...")
+                progress_callback("reading", 0, "Connecting to Kuzu graph...")
             
-            reader = ZepEntityReader()
+            reader = KuzuEntityReader()
             
             if progress_callback:
                 progress_callback("reading", 30, "Reading node data...")
@@ -311,7 +311,7 @@ class SimulationManager:
                     total=total_entities
                 )
             
-            # Pass graph_id to enable Zep retrieval for richer context
+            # Pass graph_id to enable Kuzu retrieval for richer context
             generator = OasisProfileGenerator(graph_id=state.graph_id)
             
             def profile_progress(current, total, msg):
@@ -339,7 +339,7 @@ class SimulationManager:
                 entities=filtered.entities,
                 use_llm=use_llm_for_profiles,
                 progress_callback=profile_progress,
-                graph_id=state.graph_id,  # Pass graph_id for Zep retrieval
+                graph_id=state.graph_id,  # Pass graph_id for Kuzu retrieval
                 parallel_count=parallel_profile_count,  # Parallel generation count
                 realtime_output_path=realtime_output_path,  # Real-time save path
                 output_platform=realtime_platform  # Output format

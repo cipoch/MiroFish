@@ -317,7 +317,7 @@
               <div class="detail-section">
                 <div class="detail-label">API Description</div>
                 <div class="detail-content">
-                  Based on the generated ontology, documents are chunked and the Zep API is called to build a knowledge graph, extracting entities and relations.
+                  Based on the generated ontology, documents are chunked and stored in KuzuDB to build a knowledge graph, extracting entities and relations.
                 </div>
               </div>
 

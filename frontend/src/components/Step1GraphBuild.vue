@@ -122,7 +122,7 @@
         <div class="card-content">
           <p class="api-note">POST /api/graph/build</p>
           <p class="description">
-            Based on the generated ontology, documents are auto-chunked and Zep is called to build a knowledge graph, extracting entities and relationships, forming temporal memory and community summaries
+            Based on the generated ontology, documents are auto-chunked and written into KuzuDB to build a knowledge graph, extracting entities and relationships, forming temporal memory and community summaries
           </p>
           
           <!-- Stats Cards -->

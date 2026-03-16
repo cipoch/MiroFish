@@ -44,7 +44,7 @@ class GraphBuilderService:
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        # api_key parameter kept for backward compatibility (was ZEP_API_KEY)
+        # api_key parameter kept for backward compatibility from earlier graph backends
         self.db = GraphDatabase()
         self.extractor = EntityExtractor()
         self.task_manager = TaskManager()

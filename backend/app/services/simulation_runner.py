@@ -20,7 +20,7 @@ from queue import Queue
 
 from ..config import Config
 from ..utils.logger import get_logger
-from .zep_graph_memory_updater import ZepGraphMemoryManager
+from .kuzu_graph_memory_updater import KuzuGraphMemoryManager
 from .simulation_ipc import SimulationIPCClient, CommandType, IPCResponse
 
 logger = get_logger('mirofish.simulation_runner')
@@ -374,7 +374,7 @@ class SimulationRunner:
                 raise ValueError("graph_id is required when graph memory update is enabled")
             
             try:
-                ZepGraphMemoryManager.create_updater(simulation_id, graph_id)
+                KuzuGraphMemoryManager.create_updater(simulation_id, graph_id)
                 cls._graph_memory_enabled[simulation_id] = True
                 logger.info(f"Graph memory update enabled: simulation_id={simulation_id}, graph_id={graph_id}")
             except Exception as e:
@@ -551,7 +551,7 @@ class SimulationRunner:
             # Stop graph memory updater
             if cls._graph_memory_enabled.get(simulation_id, False):
                 try:
-                    ZepGraphMemoryManager.stop_updater(simulation_id)
+                    KuzuGraphMemoryManager.stop_updater(simulation_id)
                     logger.info(f"Graph memory update stopped: simulation_id={simulation_id}")
                 except Exception as e:
                     logger.error(f"Failed to stop graph memory updater: {e}")
@@ -599,7 +599,7 @@ class SimulationRunner:
         graph_memory_enabled = cls._graph_memory_enabled.get(state.simulation_id, False)
         graph_updater = None
         if graph_memory_enabled:
-            graph_updater = ZepGraphMemoryManager.get_updater(state.simulation_id)
+            graph_updater = KuzuGraphMemoryManager.get_updater(state.simulation_id)
         
         try:
             with open(log_path, 'r', encoding='utf-8') as f:
@@ -807,7 +807,7 @@ class SimulationRunner:
         # Stop graph memory updater
         if cls._graph_memory_enabled.get(simulation_id, False):
             try:
-                ZepGraphMemoryManager.stop_updater(simulation_id)
+                KuzuGraphMemoryManager.stop_updater(simulation_id)
                 logger.info(f"Graph memory update stopped: simulation_id={simulation_id}")
             except Exception as e:
                 logger.error(f"Failed to stop graph memory updater: {e}")
@@ -1201,7 +1201,7 @@ class SimulationRunner:
         
         # First stop all graph memory updaters (stop_all prints logs internally)
         try:
-            ZepGraphMemoryManager.stop_all()
+            KuzuGraphMemoryManager.stop_all()
         except Exception as e:
             logger.error(f"Failed to stop graph memory updaters: {e}")
         cls._graph_memory_enabled.clear()

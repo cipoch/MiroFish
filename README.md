@@ -4,7 +4,7 @@ A swarm intelligence prediction engine. Upload documents describing any scenario
 
 **Live:** [synth.scty.org](https://synth.scty.org)
 
-> Fork of [666ghj/MiroFish](https://github.com/666ghj/MiroFish) — fully translated to English, Zep Cloud replaced with local graph DB, Claude/Codex CLI support added.
+> Fork of [666ghj/MiroFish](https://github.com/666ghj/MiroFish) — fully translated to English, local KuzuDB graph storage, Claude/Codex CLI support added.
 
 ## What it does
 
@@ -20,8 +20,8 @@ A swarm intelligence prediction engine. Upload documents describing any scenario
 |------|----------|-----------|
 | **Language** | Chinese UI + prompts | Full English (60+ files translated) |
 | **LLM providers** | Alibaba Qwen only | OpenAI, Anthropic, Claude CLI, Codex CLI |
-| **Graph database** | Zep Cloud (paid API) | Local KuzuDB (embedded, free) |
-| **Entity extraction** | Zep's built-in NLP | LLM-based extraction (uses your own model) |
+| **Graph database** | Hosted graph service | Local KuzuDB (embedded, free) |
+| **Entity extraction** | Managed extraction pipeline | LLM-based extraction (uses your own model) |
 | **Auth** | Requires API keys | Can use Claude Code or Codex CLI subscriptions (no separate API cost) |
 
 ## Quick start
@@ -51,6 +51,8 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+Docker builds the Vue frontend, serves it from the Flask app, and exposes the combined app on port `5001` inside the container.
+
 ## LLM providers
 
 Set `LLM_PROVIDER` in `.env`:
@@ -78,18 +80,25 @@ LLM_MODEL_NAME=gpt-4o-mini
 frontend/          Vue 3 + Vite + D3.js (graph visualization)
 backend/
   app/
-    api/           Flask REST endpoints (graph, simulation, report)
+    api/           Thin Flask REST endpoints (graph, simulation, report)
+    core/          Workbench session, session registry, resource loader, tasks
+    resources/     Adapters for projects, documents, Kuzu, simulations, reports
+    tools/         Composable workbench operations (ingest, build, prepare, run, report)
     services/
       graph_db.py          KuzuDB-backed knowledge graph
       entity_extractor.py  LLM-based entity/relationship extraction
       graph_builder.py     Ontology → graph pipeline
       simulation_runner.py OASIS multi-agent simulation (subprocess)
       report_agent.py      ReACT agent with tool-calling for reports
-      zep_tools.py         Search, interview, and analysis tools
+      kuzu_tools.py        Search, interview, and analysis tools
     utils/
       llm_client.py        Multi-provider LLM client (OpenAI/Anthropic/CLI)
   scripts/         OASIS simulation runner scripts (Twitter + Reddit)
 ```
+
+Workbench session metadata is persisted under `backend/uploads/workbench_sessions/`, and long-running task state is persisted under `backend/uploads/tasks/`.
+
+The backend is being refactored toward a pi-style shape: one workbench session core, pluggable resource adapters, composable tools, and thin API shells.
 
 ## How the pipeline works
 
@@ -108,5 +117,8 @@ Document upload → LLM ontology extraction → Knowledge graph (KuzuDB)
 - [KuzuDB](https://github.com/kuzudb/kuzu) — embedded graph database
 
 ## License
+
+AGPL-3.0
+License
 
 AGPL-3.0

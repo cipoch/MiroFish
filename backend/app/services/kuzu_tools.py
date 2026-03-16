@@ -1,5 +1,5 @@
 """
-Zep Retrieval Tools Service
+Kuzu Retrieval Tools Service
 Encapsulates graph search, node reading, edge queries, and other tools for use by the Report Agent.
 
 Core retrieval tools (optimized):
@@ -18,7 +18,7 @@ from .graph_db import GraphDatabase
 from ..utils.logger import get_logger
 from ..utils.llm_client import LLMClient
 
-logger = get_logger('mirofish.zep_tools')
+logger = get_logger('mirofish.kuzu_tools')
 
 
 @dataclass
@@ -395,9 +395,9 @@ class InterviewResult:
         return "\n".join(text_parts)
 
 
-class ZepToolsService:
+class KuzuToolsService:
     """
-    Zep Retrieval Tools Service
+    Kuzu Retrieval Tools Service
 
     [Core Retrieval Tools - Optimized]
     1. insight_forge - Deep insight retrieval (most powerful, auto-generates sub-queries, multi-dimensional retrieval)
@@ -423,7 +423,7 @@ class ZepToolsService:
         self.db = GraphDatabase()
         # LLM client used for InsightForge sub-query generation
         self._llm_client = llm_client
-        logger.info("ZepToolsService initialized successfully (using local GraphDatabase)")
+        logger.info("KuzuToolsService initialized successfully (using local GraphDatabase)")
 
     @property
     def llm(self) -> LLMClient:

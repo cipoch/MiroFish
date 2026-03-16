@@ -9,7 +9,7 @@ import warnings
 # Must be set before all other imports
 warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 from flask_cors import CORS
 
 from .config import Config
@@ -18,7 +18,8 @@ from .utils.logger import setup_logger, get_logger
 
 def create_app(config_class=Config):
     """Flask application factory function"""
-    app = Flask(__name__)
+    frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../frontend/dist'))
+    app = Flask(__name__, static_folder=frontend_dist if os.path.isdir(frontend_dist) else None)
     app.config.from_object(config_class)
     
     # Set JSON encoding: ensure non-ASCII characters are displayed directly (instead of \uXXXX format)
@@ -40,7 +41,7 @@ def create_app(config_class=Config):
         logger.info("=" * 50)
     
     # Enable CORS
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    CORS(app, resources={r"/api/*": {"origins": app.config.get('CORS_ORIGINS', [])}})
     
     # Register simulation process cleanup (ensure all simulation processes are terminated on server shutdown)
     from .services.simulation_runner import SimulationRunner
@@ -53,7 +54,7 @@ def create_app(config_class=Config):
     def log_request():
         logger = get_logger('mirofish.request')
         logger.debug(f"Request: {request.method} {request.path}")
-        if request.content_type and 'json' in request.content_type:
+        if app.config.get('DEBUG') and request.content_type and 'json' in request.content_type:
             logger.debug(f"Request body: {request.get_json(silent=True)}")
     
     @app.after_request
@@ -72,8 +73,27 @@ def create_app(config_class=Config):
     @app.route('/health')
     def health():
         return {'status': 'ok', 'service': 'MiroFish Backend'}
+
+    @app.route('/', defaults={'path': ''})
+    @app.route('/<path:path>')
+    def serve_frontend(path):
+        if path.startswith('api/') or path == 'health':
+            return {'error': 'Not found'}, 404
+
+        static_folder = app.static_folder
+        if not static_folder or not os.path.isdir(static_folder):
+            return {'error': 'Frontend not built'}, 404
+
+        if path:
+            asset_path = os.path.join(static_folder, path)
+            if os.path.isfile(asset_path):
+                return send_from_directory(static_folder, path)
+
+        return send_from_directory(static_folder, 'index.html')
     
     if should_log_startup:
+        if app.static_folder:
+            logger.info(f"Serving frontend from: {app.static_folder}")
         logger.info("MiroFish Backend started successfully")
     
     return app

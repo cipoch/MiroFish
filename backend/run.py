@@ -40,7 +40,16 @@ def main():
     debug = Config.DEBUG
 
     # Start server
-    app.run(host=host, port=port, debug=debug, threaded=True)
+    if debug:
+        app.run(host=host, port=port, debug=True, threaded=True)
+        return
+
+    try:
+        from waitress import serve
+        threads = int(os.environ.get('WAITRESS_THREADS', '8'))
+        serve(app, host=host, port=port, threads=threads)
+    except ImportError:
+        app.run(host=host, port=port, debug=False, threaded=True)
 
 
 if __name__ == '__main__':
