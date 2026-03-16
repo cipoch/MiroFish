@@ -247,8 +247,10 @@ class LLMClient:
         prompt = "\n\n".join(prompt_parts)
 
         try:
+            # Pass prompt via stdin instead of argv to avoid OSError on large prompts (>128KB ARG_MAX)
             result = subprocess.run(
-                ["codex", "exec", "--skip-git-repo-check", prompt],
+                ["codex", "exec", "--skip-git-repo-check"],
+                input=prompt,
                 capture_output=True, text=True, timeout=180,
                 cwd="/tmp"
             )

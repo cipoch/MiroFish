@@ -16,6 +16,10 @@ from .simulation_support import check_simulation_prepared
 
 logger = get_logger("mirofish.tools.prepare_simulation")
 
+# Per-simulation lock to prevent concurrent prepare races
+_preparing_lock = threading.Lock()
+_preparing_simulations: set = set()
+
 
 class PrepareSimulationTool:
     """Prepare simulation artifacts as a background task."""
@@ -65,6 +69,16 @@ class PrepareSimulationTool:
                     "prepare_info": prepare_info,
                 }
 
+        # Check if a prepare is already in progress for this simulation
+        with _preparing_lock:
+            if simulation_id in _preparing_simulations:
+                return {
+                    "simulation_id": simulation_id,
+                    "status": "already_preparing",
+                    "message": "Preparation already in progress for this simulation",
+                }
+            _preparing_simulations.add(simulation_id)
+
         project = self.project_store.get(state.project_id)
         if not project:
             raise FileNotFoundError(f"Project not found: {state.project_id}")
@@ -112,6 +126,7 @@ class PrepareSimulationTool:
         )
 
         state.status = SimulationStatus.PREPARING
+        state.error = None
         self.simulation_store.save(state)
 
         def run_prepare():
@@ -194,6 +209,10 @@ class PrepareSimulationTool:
                     current_state.status = SimulationStatus.FAILED
                     current_state.error = str(exc)
                     self.simulation_store.save(current_state)
+            finally:
+                # Release the simulation from preparing state
+                with _preparing_lock:
+                    _preparing_simulations.discard(simulation_id)
 
         thread = threading.Thread(target=run_prepare, daemon=True)
         thread.start()
