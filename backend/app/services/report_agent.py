@@ -32,6 +32,37 @@ from .graph_tools import (
 logger = get_logger('mirofish.report_agent')
 
 
+def _detect_language(text: str) -> str:
+    """
+    Detect language based on CJK character percentage.
+
+    Args:
+        text: Text to analyze
+
+    Returns:
+        "zh" if >5% of non-whitespace characters are CJK, else "en"
+    """
+    if not text:
+        return "en"
+
+    # Count CJK characters
+    cjk_count = 0
+    total_count = 0
+
+    for char in text:
+        if not char.isspace():
+            total_count += 1
+            # Check if character is in CJK ranges
+            if "\u4e00" <= char <= "\u9fff" or "\u3400" <= char <= "\u4dbf":
+                cjk_count += 1
+
+    if total_count == 0:
+        return "en"
+
+    cjk_ratio = cjk_count / total_count
+    return "zh" if cjk_ratio > 0.05 else "en"
+
+
 class ReportLogger:
     """
     Report Agent Detailed Logger
@@ -651,11 +682,15 @@ DO focus on "what will the future look like" — the simulation results ARE the 
      > "A certain group would say: original content..."
    - These quotes are the core evidence of simulation predictions
 
-3. [Language consistency - quoted content must be translated to the report language]
-   - Content returned by tools may contain English or mixed Chinese-English expressions
-   - If the simulation requirement and source material are in Chinese, the report must be written entirely in Chinese
-   - When quoting English or mixed Chinese-English content returned by tools, you must translate it into fluent Chinese before including it in the report
+3. [Language consistency - strict and absolute]
+   - Report language: {report_language}
+   - Write the ENTIRE report in {report_language}. Do NOT switch to a different language at any point.
+   - Content returned by tools may contain other languages — translate/adapt as needed to maintain {report_language} throughout
+   - When quoting tool output in {report_language}:
+     * If {report_language} is Chinese: translate English or mixed content into fluent Chinese before including
+     * If {report_language} is English: translate Chinese content into fluent English; keep English content as-is
    - Maintain the original meaning during translation, ensuring natural and smooth expression
+   - This rule is absolute. Do not change language mid-section or mid-report under any circumstances
    - This rule applies to both body text and content within quotation blocks (> format)
 
 4. [Faithfully present prediction results]
@@ -905,6 +940,10 @@ class ReportAgent:
         self.llm = llm_client or LLMClient()
         self.graph_tools = graph_tools or GraphToolsService()
 
+        # Detect report language from simulation requirement
+        self.report_language = _detect_language(simulation_requirement)
+        logger.info(f"Detected report language: {self.report_language} (based on simulation requirement)")
+
         # Tool definitions
         self.tools = self._define_tools()
 
@@ -1133,6 +1172,80 @@ class ReportAgent:
                 desc_parts.append(f"  Parameters: {params_desc}")
         return "\n".join(desc_parts)
 
+    def _check_language_drift(
+        self,
+        content: str,
+        section_title: str,
+        messages: List[Dict[str, str]],
+        section_index: int
+    ) -> str:
+        """
+        Check if generated content drifted to a different language.
+
+        For English reports, if content contains >5% CJK characters, attempt one regeneration with stricter prompt.
+
+        Args:
+            content: Section content to check
+            section_title: Title of the section
+            messages: Message history for regeneration attempt
+            section_index: Index of the section
+
+        Returns:
+            Content (either original or regenerated)
+        """
+        # Only check for language drift if expecting English report
+        if self.report_language != "en":
+            return content
+
+        detected_lang = _detect_language(content)
+
+        # If content is detected as Chinese but we expected English, attempt regeneration
+        if detected_lang == "zh":
+            logger.warning(
+                f"Section '{section_title}' drifted to Chinese — detected {_detect_language(content)} but expected English. "
+                "Attempting regeneration with stricter English enforcement..."
+            )
+
+            # Prepare a stricter English enforcement prompt
+            enforcement_prompt = (
+                "[CRITICAL LANGUAGE REQUIREMENT]\n"
+                "The output above contains Chinese text, which violates the English language requirement.\n"
+                "You MUST respond ENTIRELY in English. Do not switch to Chinese.\n"
+                "Please regenerate the section content in pure English.\n"
+                "Start with 'Final Answer:' and write only in English."
+            )
+
+            # Append the drift detection to messages and attempt one more generation
+            messages.append({
+                "role": "user",
+                "content": enforcement_prompt
+            })
+
+            regenerated = self.llm.chat(
+                messages=messages,
+                temperature=0.3,  # Lower temperature for stricter adherence
+                max_tokens=4096
+            )
+
+            if regenerated:
+                # Extract content if it has "Final Answer:" prefix
+                if "Final Answer:" in regenerated:
+                    regenerated = regenerated.split("Final Answer:")[-1].strip()
+
+                # Check if regeneration succeeded
+                if _detect_language(regenerated) == "en":
+                    logger.info(f"Section '{section_title}' regenerated successfully in English")
+                    return regenerated
+                else:
+                    logger.error(
+                        f"Section '{section_title}' still contains Chinese after regeneration attempt. "
+                        "Returning original content with warning."
+                    )
+            else:
+                logger.error(f"Section '{section_title}' regeneration returned None. Returning original content.")
+
+        return content
+
     def plan_outline(
         self,
         progress_callback: Optional[Callable] = None
@@ -1251,12 +1364,16 @@ class ReportAgent:
         if self.report_logger:
             self.report_logger.log_section_start(section.title, section_index)
 
+        # Map language code to display name
+        report_language_name = "Chinese" if self.report_language == "zh" else "English"
+
         system_prompt = SECTION_SYSTEM_PROMPT_TEMPLATE.format(
             report_title=outline.title,
             report_summary=outline.summary,
             simulation_requirement=self.simulation_requirement,
             section_title=section.title,
             tools_description=self._get_tools_description(),
+            report_language=report_language_name,
         )
 
         # Build user prompt - each completed section passes in up to 4000 characters
@@ -1392,6 +1509,14 @@ class ReportAgent:
                 final_answer = response.split("Final Answer:")[-1].strip()
                 logger.info(f"Section {section.title} generation completed (tool invocations: {tool_calls_count})")
 
+                # Check for language drift and regenerate if needed
+                final_answer = self._check_language_drift(
+                    final_answer,
+                    section.title,
+                    messages,
+                    section_index
+                )
+
                 if self.report_logger:
                     self.report_logger.log_section_content(
                         section_title=section.title,
@@ -1490,6 +1615,14 @@ class ReportAgent:
             logger.info(f"Section {section.title}: 'Final Answer:' prefix not detected, adopting LLM output as final content (tool invocations: {tool_calls_count})")
             final_answer = response.strip()
 
+            # Check for language drift and regenerate if needed
+            final_answer = self._check_language_drift(
+                final_answer,
+                section.title,
+                messages,
+                section_index
+            )
+
             if self.report_logger:
                 self.report_logger.log_section_content(
                     section_title=section.title,
@@ -1517,6 +1650,15 @@ class ReportAgent:
             final_answer = response.split("Final Answer:")[-1].strip()
         else:
             final_answer = response
+
+        # Check for language drift and regenerate if needed (only if we have valid content)
+        if response is not None and not final_answer.startswith("(This section failed"):
+            final_answer = self._check_language_drift(
+                final_answer,
+                section.title,
+                messages,
+                section_index
+            )
 
         # Record section content generation completion log
         if self.report_logger:

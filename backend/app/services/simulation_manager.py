@@ -143,15 +143,18 @@ class SimulationManager:
         return sim_dir
     
     def _save_simulation_state(self, state: SimulationState):
-        """Save simulation state to file"""
+        """Save simulation state to file with atomic write"""
         sim_dir = self._get_simulation_dir(state.simulation_id)
         state_file = os.path.join(sim_dir, "state.json")
-        
+
         state.updated_at = datetime.now().isoformat()
-        
-        with open(state_file, 'w', encoding='utf-8') as f:
+
+        # Atomic write: write to .tmp file first, then rename
+        tmp_file = state_file + ".tmp"
+        with open(tmp_file, 'w', encoding='utf-8') as f:
             json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
-        
+        os.replace(tmp_file, state_file)
+
         self._simulations[state.simulation_id] = state
     
     def _load_simulation_state(self, simulation_id: str) -> Optional[SimulationState]:
@@ -266,6 +269,9 @@ class SimulationManager:
         try:
             state.status = SimulationStatus.PREPARING
             state.error = None
+            state.twitter_status = "not_started"
+            state.reddit_status = "not_started"
+            state.updated_at = datetime.now().isoformat()
             self._save_simulation_state(state)
             
             sim_dir = self._get_simulation_dir(simulation_id)
