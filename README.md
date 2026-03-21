@@ -74,6 +74,29 @@ LLM_API_KEY=sk-...
 LLM_MODEL_NAME=gpt-4o-mini
 ```
 
+## Using Codex CLI
+
+For Docker deployments, MiroFish now routes Codex CLI traffic through a local OpenAI-compatible sidecar service at `codex-proxy`. The `mirofish` container talks to `http://codex-proxy:11435/v1`, and the proxy translates each `/v1/chat/completions` request into `codex exec --skip-git-repo-check` with bounded concurrency.
+
+`docker-compose.yml` already wires this up for the Docker stack:
+
+- `mirofish` runs with `LLM_PROVIDER=openai`
+- `LLM_BASE_URL=http://codex-proxy:11435/v1`
+- `LLM_API_KEY=codex`
+- `LLM_MODEL_NAME=codex`
+- `codex-proxy` uses `CODEX_PROXY_WORKERS=4` by default
+
+To use it:
+
+```bash
+cp .env.example .env
+docker compose up -d --build codex-proxy
+curl http://localhost:11435/health
+docker compose up -d
+```
+
+The proxy container mounts the host Codex binary and `~/.codex` auth state, so make sure Codex CLI is installed and authenticated on the host first. The legacy `LLM_PROVIDER=codex-cli` path remains available outside Docker as a fallback, but the proxy is the recommended Docker path because it queues requests instead of cold-starting an unbounded number of CLI subprocesses.
+
 ## Architecture
 
 ```
