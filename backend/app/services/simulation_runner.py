@@ -998,7 +998,7 @@ class SimulationRunner:
         Returns:
             Summary information for each round
         """
-        actions = cls.get_actions(simulation_id, limit=10000)
+        actions = cls.get_all_actions(simulation_id)
         
         # Group by round
         rounds: Dict[int, Dict[str, Any]] = {}
@@ -1031,7 +1031,10 @@ class SimulationRunner:
             
             r["active_agents"].add(action.agent_id)
             r["action_types"][action.action_type] = r["action_types"].get(action.action_type, 0) + 1
-            r["last_action_time"] = action.timestamp
+            if action.timestamp < r["first_action_time"]:
+                r["first_action_time"] = action.timestamp
+            if action.timestamp > r["last_action_time"]:
+                r["last_action_time"] = action.timestamp
         
         # Convert to list
         result = []
@@ -1059,7 +1062,7 @@ class SimulationRunner:
         Returns:
             Agent statistics list
         """
-        actions = cls.get_actions(simulation_id, limit=10000)
+        actions = cls.get_all_actions(simulation_id)
         
         agent_stats: Dict[int, Dict[str, Any]] = {}
         
@@ -1087,7 +1090,10 @@ class SimulationRunner:
                 stats["reddit_actions"] += 1
             
             stats["action_types"][action.action_type] = stats["action_types"].get(action.action_type, 0) + 1
-            stats["last_action_time"] = action.timestamp
+            if action.timestamp < stats["first_action_time"]:
+                stats["first_action_time"] = action.timestamp
+            if action.timestamp > stats["last_action_time"]:
+                stats["last_action_time"] = action.timestamp
         
         # Sort by total action count
         result = sorted(agent_stats.values(), key=lambda x: x["total_actions"], reverse=True)
@@ -1760,4 +1766,3 @@ class SimulationRunner:
             results = results[:limit]
         
         return results
-

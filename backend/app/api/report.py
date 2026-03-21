@@ -22,6 +22,43 @@ logger = get_logger('mirofish.api.report')
 
 # ============== Report Generation API ==============
 
+def _task_to_dict(task) -> dict:
+    """Normalize task objects and pre-serialized task dicts."""
+    return task if isinstance(task, dict) else task.to_dict()
+
+
+def _normalize_task_status_data(task_data: dict) -> dict:
+    """Ensure task status payloads always expose a numeric progress field."""
+    normalized = dict(task_data)
+    if normalized.get("progress") is None:
+        normalized["progress"] = 0
+    return normalized
+
+
+def _get_generate_task_by_report_id(report_id: str) -> dict:
+    """Resolve an in-flight report generation task by report_id."""
+    task_manager = TaskManager()
+    for task in task_manager.list_tasks(task_type="report_generate"):
+        task_data = _task_to_dict(task)
+        metadata = task_data.get("metadata") or {}
+        if metadata.get("report_id") == report_id:
+            return _normalize_task_status_data(task_data)
+    return None
+
+
+def _build_status_data_from_report(report) -> dict:
+    """Build a status payload from persisted report metadata."""
+    is_completed = report.status == ReportStatus.COMPLETED
+    return {
+        "simulation_id": report.simulation_id,
+        "report_id": report.report_id,
+        "status": report.status.value,
+        "progress": 100 if is_completed else 0,
+        "message": "Report already generated" if is_completed else (report.error or "Report status available"),
+        "already_completed": is_completed,
+    }
+
+
 @report_bp.route('/generate', methods=['POST'])
 def generate_report():
     """Generate a simulation analysis report."""
@@ -101,19 +138,24 @@ def get_generate_status():
             report_id = data.get('report_id')
         
         if report_id:
-            report = ReportManager.get_report(report_id)
-            if report and report.status == ReportStatus.COMPLETED:
+            task_data = _get_generate_task_by_report_id(report_id)
+            if task_data:
                 return jsonify({
                     "success": True,
-                    "data": {
-                        "report_id": report.report_id,
-                        "simulation_id": report.simulation_id,
-                        "status": "completed",
-                        "progress": 100,
-                        "message": "Report already generated",
-                        "already_completed": True
-                    }
+                    "data": task_data
                 })
+
+            report = ReportManager.get_report(report_id)
+            if report:
+                return jsonify({
+                    "success": True,
+                    "data": _build_status_data_from_report(report)
+                })
+
+            return jsonify({
+                "success": False,
+                "error": f"Report not found: {report_id}"
+            }), 404
 
         # If simulation_id is provided, first check if a completed report already exists
         if simulation_id:
@@ -148,7 +190,7 @@ def get_generate_status():
         
         return jsonify({
             "success": True,
-            "data": task.to_dict()
+            "data": _normalize_task_status_data(_task_to_dict(task))
         })
         
     except Exception as e:

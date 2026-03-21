@@ -245,12 +245,9 @@ def list_tasks():
     List all tasks
     """
     tasks = TaskManager().list_tasks()
-    
-    return jsonify({
-        "success": True,
-        "data": [t.to_dict() for t in tasks],
-        "count": len(tasks)
-    })
+    serialized_tasks = [task if isinstance(task, dict) else task.to_dict() for task in tasks]
+
+    return jsonify(serialized_tasks)
 
 
 @graph_bp.route('/nodes', methods=['GET'])
